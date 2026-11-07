@@ -18,7 +18,7 @@ All three users share one demo password: `Demo@1234`. They exist only in the dem
 1. Sign in as `estimator@company-a.test`. **RFQs** shows 8 RFQs across the lifecycle (estimating, awaiting approval, sent, won, lost with a reason).
 2. **New RFQ**, then **Use a sample email**, then **Read RFQ**. Each value shows where it came from, and values that were read or assumed are highlighted until you accept them. Tick "I checked this part", **Create RFQ**.
 3. Open a part. The routing was suggested from the most similar past part, with its source. Accept it, then **Save costing**. The price table updates live as you edit and shows its formulas.
-4. On the RFQ page, **Submit for approval**. The spindle is about ₹2.3 crore a year, above the ₹25 lakh limit. The small spacer bush (RFQ-2611-027) is under it and approves itself.
+4. On the RFQ page, **Submit for approval**. The spindle is about ₹2.3 crore a year, above the ₹25 lakh limit. Cost the small spacer bush (RFQ-2611-027) and submit it: it is under the limit, so it approves itself.
 5. Sign out, sign in as `saleshead@company-a.test`. **Approvals**, **Review**, **Approve**, then **Open PDF** for the quote with its cost breakup.
 6. **Rate masters**: add a new EN8 rate starting tomorrow. Existing quotes keep their rates; the page shows it as "coming".
 7. **Past quotes**: search by name, or give a material and weight to rank similar parts.

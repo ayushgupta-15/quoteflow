@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>QuoteFlow: Technical Design Document</title>
+<style>
+  @page { size: A4; margin: 16mm 16mm 18mm; }
+  :root { --ink:#1c2024; --muted:#68707a; --line:#dedbd3; --accent:#1d3f5f; --soft:#eef2f6; --warn:#8a5d0f; }
+  * { box-sizing: border-box; }
+  body { font: 10pt/1.5 "Noto Sans", "Helvetica Neue", Arial, sans-serif; color: var(--ink); margin: 0; }
+  h1 { font-size: 23pt; margin: 0 0 4pt; letter-spacing: -0.02em; }
+  h2 { font-size: 13.5pt; margin: 22pt 0 6pt; padding-top: 8pt; border-top: 1px solid var(--line); letter-spacing: -0.01em; break-after: avoid; }
+  h3 { font-size: 10.5pt; margin: 12pt 0 3pt; break-after: avoid; }
+  p { margin: 0 0 6pt; }
+  a { color: var(--accent); }
+  ul, ol { margin: 0 0 6pt; padding-left: 16pt; }
+  li { margin-bottom: 2pt; }
+  code { font: 8.6pt "DejaVu Sans Mono", Menlo, monospace; background: var(--soft); padding: 0 3pt; border-radius: 3px; }
+  .muted { color: var(--muted); }
+  .lead { font-size: 11pt; color: var(--ink); margin-bottom: 10pt; }
+  .meta { border: 1px solid var(--line); border-radius: 6px; padding: 8pt 12pt; margin: 10pt 0 6pt; background: #fbfaf8; }
+  .meta div { display: flex; gap: 10pt; margin: 1pt 0; }
+  .meta b { width: 78pt; color: var(--muted); font-weight: 600; flex: none; }
+  table { border-collapse: collapse; width: 100%; margin: 4pt 0 9pt; font-size: 9pt; }
+  tr { break-inside: avoid; }
+  th, td { text-align: left; padding: 4pt 7pt; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 8.5pt; border-bottom: 1.5px solid var(--line); }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  figure { margin: 8pt 0 10pt; break-inside: avoid; }
+  figure img { width: 100%; border: 1px solid var(--line); border-radius: 5px; display: block; }
+  figcaption { font-size: 8.5pt; color: var(--muted); margin-top: 3pt; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10pt; }
+  .callout { border-left: 3px solid var(--accent); background: var(--soft); padding: 6pt 10pt; margin: 6pt 0 8pt; border-radius: 0 5px 5px 0; break-inside: avoid; }
+  .warn { border-left-color: #c9a24b; background: #faf3e0; }
+  svg text { font-family: "Noto Sans", Arial, sans-serif; }
+  .pb { break-before: page; }
+</style>
+</head>
+<body>
+
+<h1>QuoteFlow</h1>
+<p class="lead">Technical Design Document for problem 5: RFQ-to-quote costing web app for an auto-component maker.</p>
+
+<div class="meta">
+  <div><b>GitHub</b><span><a href="{{REPO_URL}}">{{REPO_URL}}</a></span></div>
+  <div><b>Live app</b><span><a href="{{LIVE_URL}}">{{LIVE_URL}}</a></span></div>
+  <div><b>Candidate</b><span>Ayush Gupta, Software Engineering Intern application, Isocode Labs</span></div>
+  <div><b>Client brief</b><span>Company A, Chakan, Pune (machined and forged parts, 320 staff, estimation team of 6)</span></div>
+  <div><b>Demo logins</b><span>See <code>deployment.md</code> (three users, one demo password)</span></div>
+</div>
+
+<h2>1. What I built</h2>
+<p>An estimator opens an RFQ whose part details are already filled in, finishes costing in minutes, and the sales head approves large quotes. Rates come from one master with start dates, so each saved quote keeps the exact rates it was priced with. The brief's core build slice works end to end on seeded sample data:</p>
+<table>
+  <tr><th>Core build item</th><th>What exists</th></tr>
+  <tr><td>RFQ register</td><td>Due dates with "days left" badges, owners, status (estimating, awaiting approval, approved, sent, won, lost with reason), filters, search, annual value.</td></tr>
+  <tr><td>Part costing screen</td><td>Material and scrap, routing with cycle and setup times, overhead, tooling, packing, freight, margin, priced at 2 or 3 volumes, live as you type, with each line's formula shown.</td></tr>
+  <tr><td>Rate masters with effective dates</td><td>Append-only rows, "coming" rates shown, no back-dating. Saved costings store the rate rows they used.</td></tr>
+  <tr><td>Approval</td><td>Quotes above ₹25 lakh a year need the sales head. The submitter cannot approve their own quote. Send-back needs a reason.</td></tr>
+  <tr><td>PDF quote</td><td>Prices at every volume, GST separately, full cost breakup, approver and date.</td></tr>
+  <tr><td>AI: RFQ intake</td><td>Reads a pasted email, an Excel/CSV part list and a pasted drawing title block. Every value carries its source and waits for the estimator's OK.</td></tr>
+  <tr><td>Roles</td><td>Estimator and sales head, enforced on the server.</td></tr>
+</table>
+<p>Beyond the slice I added: routing suggestions from the most similar past part, past-quote search and Excel/CSV import (tested at 1,400 rows), quote versions that supersede each other, and an activity log per RFQ.</p>
+
+<h2>2. Architecture and why</h2>
+<svg viewBox="0 0 680 232" width="100%" role="img" aria-label="Architecture diagram">
+  <g fill="none" stroke="#1d3f5f" stroke-width="1.2">
+    <rect x="8" y="14" width="190" height="196" rx="8" fill="#f4f6f9"/>
+    <rect x="248" y="14" width="236" height="196" rx="8" fill="#f4f6f9"/>
+    <rect x="534" y="14" width="138" height="88" rx="8" fill="#f4f6f9"/>
+    <rect x="534" y="122" width="138" height="88" rx="8" fill="#f4f6f9"/>
+    <path d="M198 112 H248 M484 60 H534 M484 166 H534" marker-end="url(#a)"/>
+  </g>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#1d3f5f"/></marker></defs>
+  <g font-size="11" fill="#1c2024">
+    <text x="20" y="36" font-weight="700">Browser</text>
+    <text x="20" y="58">Server-rendered pages</text>
+    <text x="20" y="76">Costing editor (client)</text>
+    <text x="20" y="94" fill="#1d3f5f">costing.ts runs here too,</text>
+    <text x="20" y="110" fill="#1d3f5f">for the live price preview</text>
+    <text x="20" y="138">Intake review form</text>
+    <text x="20" y="156">PDF opened via a route</text>
+    <text x="260" y="36" font-weight="700">Next.js server (Node)</text>
+    <text x="260" y="58">Server actions: sign-in check,</text>
+    <text x="260" y="74">role check, zod validation</text>
+    <text x="260" y="98" font-weight="600">services.ts</text>
+    <text x="260" y="114">rules, SQL, transactions</text>
+    <text x="260" y="138" fill="#1d3f5f">costing.ts (authoritative price)</text>
+    <text x="260" y="154" fill="#1d3f5f">extract.ts (intake reader)</text>
+    <text x="260" y="170" fill="#1d3f5f">pdf.ts (quote PDF, pdfkit)</text>
+    <text x="260" y="194" class="muted">session cookie: signed JWT, 8 h</text>
+    <text x="546" y="36" font-weight="700">Postgres</text>
+    <text x="546" y="56">users, rfqs, parts,</text>
+    <text x="546" y="72">routing_ops, rate_items,</text>
+    <text x="546" y="88">costings, quotes, activity</text>
+    <text x="546" y="144" font-weight="700">LLM API (optional)</text>
+    <text x="546" y="164">Off by default. Email</text>
+    <text x="546" y="180">text only, fallback only</text>
+  </g>
+</svg>
+<table>
+  <tr><th>Choice</th><th>Why</th><th>Trade-off accepted</th></tr>
+  <tr><td>One Next.js app (App Router, TypeScript)</td><td>One deployable, server-rendered desk screens, and one shared costing engine that runs in the browser for live preview and on the server as the authority.</td><td>No separate API for other clients. Fine for an internal desk tool.</td></tr>
+  <tr><td>Postgres, plain SQL, no ORM</td><td>Money and approvals need transactions and constraints. The schema is small, so SQL in one file is easier to review than an ORM layer. <code>jsonb</code> holds immutable costing snapshots.</td><td>Hand-written queries; types are asserted at the boundary, not generated.</td></tr>
+  <tr><td>Costing as pure functions</td><td>No I/O, no clock, no AI: the same inputs always give the same price, which makes it testable and explainable.</td><td>New cost elements need a code change, not configuration.</td></tr>
+  <tr><td>Own sign-in (bcrypt, signed httpOnly cookie)</td><td>Named users only, two roles, no third-party dependency. The user row is re-read on every request, so removed users lose access at once.</td><td>No SSO, MFA or password reset. Listed under "next".</td></tr>
+  <tr><td>Plain CSS with design tokens</td><td>The client asked for restrained, minimal design. No UI kit means nothing on screen that lacks a purpose.</td><td>More CSS to maintain.</td></tr>
+</table>
+
+<h2>3. Data model</h2>
+<table>
+  <tr><th>Table</th><th>Holds</th><th>Rule it enforces</th></tr>
+  <tr><td><code>users</code></td><td>Email, name, role (<code>estimator</code> or <code>sales_head</code>), bcrypt hash</td><td>Role is a check constraint.</td></tr>
+  <tr><td><code>rfqs</code></td><td>RFQ no, customer, received and due dates, owner, status, loss reason, source email</td><td>A <em>lost</em> RFQ must have a reason.</td></tr>
+  <tr><td><code>parts</code>, <code>routing_ops</code></td><td>Part inputs (material, weights, volume, tooling, packing, margin, tiers) and its operations</td><td>Net weight cannot exceed gross. <code>sources</code> records where each pre-filled value came from and whether it was accepted. An operation may carry <code>suggested_from</code>.</td></tr>
+  <tr><td><code>rate_items</code></td><td>Material, work-centre and parameter rates, each with <code>effective_from</code></td><td>Append-only. Unique on (kind, code, date). The rate on a date is the latest row on or before it.</td></tr>
+  <tr><td><code>costings</code></td><td>Version, pricing date, inputs, full result, and the rate rows used</td><td>Immutable snapshots. Unique on (part, version).</td></tr>
+  <tr><td><code>quotes</code>, <code>quote_lines</code></td><td>Quote version, status, annual value, who submitted and decided; the costing used for each part</td><td>A quote points at costing ids, so it can always be explained from its own rates.</td></tr>
+  <tr><td><code>activity</code></td><td>Who did what, when, to which RFQ</td><td>Written in the same transaction as the change.</td></tr>
+  <tr><td><code>past_parts</code></td><td>Previously quoted parts with their routing</td><td>Feeds search and routing suggestions.</td></tr>
+</table>
+<svg viewBox="0 0 680 84" width="100%" role="img" aria-label="Status flow">
+  <g font-size="10.5" fill="#1c2024" stroke="#1d3f5f" stroke-width="1.1">
+    <rect x="4" y="14" width="96" height="30" rx="15" fill="#eef2f6"/><rect x="132" y="14" width="124" height="30" rx="15" fill="#faf3e0"/>
+    <rect x="288" y="14" width="86" height="30" rx="15" fill="#e9f2ec"/><rect x="406" y="14" width="66" height="30" rx="15" fill="#eef2f6"/>
+    <rect x="504" y="2" width="60" height="26" rx="13" fill="#e9f2ec"/><rect x="504" y="34" width="60" height="26" rx="13" fill="#f6e6e6"/>
+    <path fill="none" d="M100 29 H132 M256 29 H288 M374 29 H406 M472 29 L504 15 M472 29 L504 47" marker-end="url(#a)"/>
+  </g>
+  <g font-size="10.5" fill="#1c2024" text-anchor="middle">
+    <text x="52" y="33">Estimating</text><text x="194" y="33">Awaiting approval</text><text x="331" y="33">Approved</text><text x="439" y="33">Sent</text>
+    <text x="534" y="19">Won</text><text x="534" y="51">Lost</text>
+  </g>
+  <text x="150" y="62" font-size="8.5" fill="#68707a" text-anchor="middle">sent back (reason needed): returns to Estimating</text>
+  <text x="331" y="76" font-size="8.5" fill="#68707a" text-anchor="middle">at or below ₹25 lakh: skips approval, goes straight to Approved</text>
+</svg>
+
+<h2>4. The costing engine</h2>
+<p>All maths is in <code>src/lib/costing.ts</code>. It is pure, and it is the only place a price is computed. For a part at annual volume <em>V</em>:</p>
+<ul>
+  <li><b>Material</b> = gross weight × material rate − (gross − net) × scrap recovery rate.</li>
+  <li><b>Each operation</b> = cycle min ÷ 60 × machine hour rate + setup min ÷ 60 × hour rate ÷ lot size, where lot size = <em>V</em> ÷ 12 × lot months.</li>
+  <li><b>Overhead</b> = overhead % × conversion cost (the sum of operations).</li>
+  <li><b>Tooling</b> = tooling cost ÷ (<em>V</em> × tooling years). <b>Packing</b> = per piece input. <b>Freight</b> = gross weight × ₹/kg.</li>
+  <li><b>Cost</b> = sum of the above. <b>Price</b> = cost ÷ (1 − margin %). <b>GST</b> = price × GST %, shown separately. <b>Annual value</b> = price × <em>V</em>.</li>
+</ul>
+<p>Volume changes the price through setup and tooling spreading over more or fewer pieces, so three tiers give three prices. Every leaf amount is rounded to 2 decimals and everything above is a sum of rounded leaves, so a printed breakup always adds up exactly. Missing rates raise an error naming the missing code, instead of pricing at zero.</p>
+<h3>Worked example: rear wheel spindle at 1,80,000 a year (from the app)</h3>
+<table>
+  <tr><th>Line</th><th>Working</th><th class="n">₹ per piece</th></tr>
+  <tr><td>Material net of scrap</td><td>0.610 kg × 72.00 − 0.090 kg × 30.00</td><td class="n">41.22</td></tr>
+  <tr><td>Op 1 turning</td><td>3.2 min ÷ 60 × 850/h + 45 min setup over a lot of 15,000</td><td class="n">45.38</td></tr>
+  <tr><td>Op 2 thread rolling, Op 3 inspection</td><td>0.9 min at 700/h, 0.4 min at 450/h, with setup</td><td class="n">10.52 + 3.00</td></tr>
+  <tr><td>Overhead</td><td>58.90 × 15%</td><td class="n">8.84</td></tr>
+  <tr><td>Packing, freight</td><td>1.80; 0.610 kg × 3.50</td><td class="n">1.80 + 2.13</td></tr>
+  <tr><td><b>Cost</b></td><td></td><td class="n"><b>112.89</b></td></tr>
+  <tr><td><b>Price ex-GST</b> at 12% margin</td><td>112.89 ÷ 0.88; GST 23.09; incl. GST 151.37</td><td class="n"><b>128.28</b></td></tr>
+  <tr><td>Annual value ex-GST</td><td>128.28 × 1,80,000</td><td class="n">₹2,30,90,400</td></tr>
+</table>
+<p class="muted">The 3.2 minutes and ₹850/h are the brief's sample row. The other numbers are assumptions (section 9).</p>
+<h3>Versioned rates</h3>
+<p>A rate is never edited. Changing EN8 adds a row with a start date, and the engine picks the latest row on or before the pricing date. When a costing is saved, the result and the exact rate rows used (id, value, start date) are stored with it, and the quote points at that costing. So an old quote is explained by its own rates, however the master changes later. A new rate cannot start in the past, so history cannot be rewritten. Tests cover: the old and new price on either side of a start date, a rate that starts after the pricing date being ignored, and a saved costing staying unchanged after a new rate is added.</p>
+
+<h2>5. Main flow, and the rules around it</h2>
+<ol>
+  <li><b>Create:</b> from an email or sheet (section 6), or by hand. A part must have a material that exists in the master to be priced.</li>
+  <li><b>Cost:</b> the estimator accepts or edits pre-filled values, then <em>Save costing</em>. The server recomputes the price itself (the browser's preview is only a preview) and stores a snapshot.</li>
+  <li><b>Submit:</b> every part needs a current costing. If inputs changed after saving, the part is "out of date" and blocks submission. The annual value decides the path: above ₹25 lakh goes to the sales head, otherwise it approves itself as "within estimator authority".</li>
+  <li><b>Approve or send back:</b> only the sales head, never the submitter. Sending back needs a reason and returns the RFQ to estimating. A resubmission supersedes the earlier version.</li>
+  <li><b>Send, then won or lost:</b> sending is mocked and logged. Lost needs a reason.</li>
+</ol>
+<p>While a quote is waiting or sent, the RFQ is locked: parts, routing and costing cannot change under it.</p>
+
+<h2>6. How the AI part works, and what happens when it is wrong</h2>
+<p>The AI never touches cost maths. It only pre-fills inputs, and a person accepts them.</p>
+<h3>Reading the RFQ (<code>src/lib/extract.ts</code>)</h3>
+<ol>
+  <li><b>Rules first, always available.</b> An Excel/CSV part list is read by matching column headings (Part, Material, Gross Wt, Annual Volume and common variants) and citing the cell: <em>Excel row 3, column "Gross Wt kg"</em>. Email lines are read for a material, a weight in kg and a volume (it understands 1,80,000 and "1.8 lakh"). The customer comes from the From line, the due date from phrases like "by 14 Nov". A pasted drawing title block fills gaps and never overrides the part list.</li>
+  <li><b>Optional LLM fallback.</b> Only if an API key is set and the rules found no parts. It is a forced tool call, so the reply is structured, the reply is validated with a schema, it has a 15 second timeout, and any failure falls back to the rules with a note. Only the pasted email text is sent. Drawings are never uploaded or stored.</li>
+  <li><b>Routing suggestions.</b> Past parts are ranked by similarity: 0.40 for the same material, up to 0.35 for weight closeness, up to 0.25 for shared name words. The best match above 0.6 pre-fills the routing, labelled with the quote, part and customer it came from.</li>
+</ol>
+<h3>When it is wrong or unsure</h3>
+<ul>
+  <li>Every value shows its source and confidence. Pre-filled values are highlighted until accepted. Editing a value counts as accepting it.</li>
+  <li><b>The server enforces acceptance.</b> A costing cannot be saved while any pre-filled value, or a suggested routing, is unaccepted. Tests cover both.</li>
+  <li>A material not in the master is flagged at low confidence, and costing fails with a message naming it. A missing net weight is estimated at 85% of gross, labelled <em>assumed</em> at 0.2 confidence.</li>
+  <li>If the AI reader fails or returns junk, the user is told and the rule-based result is used. An email with no readable parts creates no parts.</li>
+</ul>
+<div class="callout"><b>NDA constraint.</b> The AI reader is off by default. When it is on, only email text is sent, never drawings. The provider should be one that does not train on submitted data; the Anthropic API commercial terms say so by default, and the client should confirm that in their own contract before enabling it.</div>
+<div class="callout warn"><b>Honest status.</b> The AI reader was written and unit-tested against a mocked API (success, failure, junk, and that the key is never in the body). It has not been run against the live API in this build because no key was available. The rule-based reader is the tested default.</div>
+
+<h2>7. UI and design decisions</h2>
+<p>The client asked for minimal design that counts as much as features, and for a dense but calm costing screen. The system is one warm off-white surface, one ink-blue accent, system fonts with tabular numerals, thin rules and no shadows or decoration. Colour is only used for status (amber waiting, green good, red lost) so it always means something. Every screen has a loading skeleton, an empty state and an error state, and the layout stacks on a phone with no page-level horizontal scroll (tables scroll inside their card).</p>
+<figure><img src="img/register.jpg" alt="RFQ register"><figcaption><b>RFQ register.</b> Sorted by what needs attention: open RFQs by due date, closed ones last. "Days left" badges turn amber at 2 days and red when overdue. Annual value is shown in lakh and crore so scale reads at a glance.</figcaption></figure>
+<figure><img src="img/intake.jpg" alt="Intake review"><figcaption><b>Intake review.</b> Everything the reader found sits in editable fields with its source beneath. Amber-tinted fields are waiting for your OK. A net weight the reader had to assume says so.</figcaption></figure>
+<figure><img src="img/costing.jpg" alt="Costing screen"><figcaption><b>Costing screen.</b> Inputs on the left, the price table on the right and sticky, with volume tiers as columns so the effect of volume is visible side by side. Each line's formula sits under it in small type, numbers are right-aligned, and nothing else competes.</figcaption></figure>
+<div class="pair">
+  <figure><img src="img/approval.jpg" alt="Approval"><figcaption><b>Approval.</b> The decision panel is the only action. The annual value and the rule that triggered approval are next to it.</figcaption></figure>
+  <figure><img src="img/rates.jpg" alt="Rate masters"><figcaption><b>Rate masters.</b> Current value, since when, and any change coming. History is never overwritten.</figcaption></figure>
+</div>
+
+<h2>8. Testing and security</h2>
+<p><b>45 automated tests</b> (<code>npm test</code>): 16 on the costing engine (hand-worked prices, rounding, tiers, effective dating, validation, the approval boundary), 14 on extraction (number, date and material parsing, email, Excel, title block, and the mocked LLM paths), and 15 on the services against a real Postgres (the approval workflow, locks, acceptance rules, rate rules, similarity ranking, RFQ numbering, and a 1,400-row import). One test is a regression for a bug I found by using the app: a saved costing showed "out of date" because Postgres reorders JSON keys.</p>
+<table>
+  <tr><th>Area</th><th>What is in place</th></tr>
+  <tr><td>Secrets</td><td>None in the repository. <code>.env</code> is ignored, <code>.env.example</code> holds names only. In development the session secret is random per process; in production the app refuses to start without <code>SESSION_SECRET</code>.</td></tr>
+  <tr><td>Access control</td><td>Sign-in required on every page, action and the PDF route. Roles checked on the server for approval and rate changes. The approvals page is hidden from estimators. The user is re-read from the database on each request.</td></tr>
+  <tr><td>Input validation</td><td>zod at every server action, plus database constraints (checks, uniqueness, foreign keys) as the last line. All SQL is parameterised. Uploads: .xlsx or .csv only, 2 MB, row-capped.</td></tr>
+  <tr><td>Sessions and sign-in</td><td>httpOnly, SameSite=Lax, Secure in production, 8 hours. bcrypt with a dummy comparison for unknown emails. 8 attempts per 15 minutes per email.</td></tr>
+  <tr><td>Other</td><td>Next.js checks the origin of server actions. Security headers: nosniff, frame deny, referrer policy, permissions policy. Four-eyes on approval.</td></tr>
+</table>
+
+<h2>9. Assumptions</h2>
+<p>The brief gives part, material, gross weight, volume, cycle time and hour rate for three parts, and nothing else. Everything below is mine, and is seeded as editable data, not hard-wired.</p>
+<table>
+  <tr><th>#</th><th>Assumption</th></tr>
+  <tr><td>A1</td><td>Cost formulas as in section 4. The brief lists the elements but not the formulas.</td></tr>
+  <tr><td>A2</td><td>Overhead is 15% and applies to conversion (machining) cost only, not to material.</td></tr>
+  <tr><td>A3</td><td>Margin is a percentage of the selling price, default 12% (taken from the brief's contribution figure). It is editable per part.</td></tr>
+  <tr><td>A4</td><td>A production lot is one month of annual demand, so setup is spread over V ÷ 12. Tooling is spread over 3 years of volume.</td></tr>
+  <tr><td>A5</td><td>Freight is ₹3.50 per kg of gross weight. Packing is a per-piece input (₹0.60 to ₹8 in the demo data).</td></tr>
+  <tr><td>A6</td><td>GST is 18%, one rate, shown separately. HSN-specific rates are not modelled.</td></tr>
+  <tr><td>A7</td><td>Material rates: EN8 ₹72/kg (scrap ₹30), 40Cr4 forged blank ₹98/kg (scrap ₹32), 20MnCr5 ₹88/kg (scrap ₹31). Market-like guesses. The ₹76 EN8 rate from 1 Dec is a demo of a scheduled change.</td></tr>
+  <tr><td>A8</td><td>Hour rates for turning (₹850), heavy turning (₹950) and the horizontal machining centre (₹1,450) come from the brief's sample rows. Drilling, thread rolling, grinding and inspection rates are assumed.</td></tr>
+  <tr><td>A9</td><td>The brief gives one cycle time per part. I use it as the first operation and add assumed follow-on operations and setup times (for example thread rolling and inspection) so the routing is realistic.</td></tr>
+  <tr><td>A10</td><td>Net weights (0.52, 3.85, 1.12 kg) are assumed, since the brief gives gross only. The intake reader assumes 85% of gross when none is given, and says so.</td></tr>
+  <tr><td>A11</td><td>The lift arm has ₹8.5 lakh of forging die tooling. Other parts have none.</td></tr>
+  <tr><td>A12</td><td>The approval limit is measured on annual value, ex-GST, at the part's annual volume, summed over the RFQ. "Above ₹25 lakh" means strictly above.</td></tr>
+  <tr><td>A13</td><td>Quotes at or below the limit approve themselves ("within estimator authority"). The submitter can never approve their own quote.</td></tr>
+  <tr><td>A14</td><td>Quotes are valid for 30 days. Sending is mocked and logged.</td></tr>
+  <tr><td>A15</td><td>Only the sales head changes rates. The plant head is not a separate role in this build.</td></tr>
+  <tr><td>A16</td><td>The demo holds 140 generated past parts, not the real 1,400. The import accepts headings I guessed (Part, Material, Gross Wt, Annual Volume, Price, Date, Outcome, Quote ref).</td></tr>
+  <tr><td>A17</td><td>"Similar part" means same material, close weight and shared name words (section 6).</td></tr>
+  <tr><td>A18</td><td>The PDF prints "Rs." because the built-in PDF fonts have no rupee sign. The screens use ₹.</td></tr>
+</table>
+
+<h2>10. What I cut, and what I would do next</h2>
+<p><b>Cut, on purpose:</b></p>
+<ul>
+  <li>Reading drawing PDFs (OCR or a vision model). The title block is read from pasted text only, which also keeps NDA drawings out of the system.</li>
+  <li>Real email sending, SSO, MFA and password reset.</li>
+  <li>The plant head's routing check. A per-customer view of past quotes beyond search.</li>
+  <li>A column-mapping screen for the Excel import (fixed headings today) and per-row duplicate detection.</li>
+</ul>
+<p><b>Next, in order:</b></p>
+<ol>
+  <li>Run the AI reader against the live API with a small set of real RFQ emails, and measure how often rules alone are enough.</li>
+  <li>Rate cards per customer and per year, scrap by operation, and a "what changed" comparison between two costing versions.</li>
+  <li>Drawing intake that never leaves the client's network, then the plant head's routing sign-off.</li>
+  <li>Shared rate limiting (the current limiter is in memory per instance) and a Content-Security-Policy.</li>
+</ol>
+
+<h2>11. Honest limits</h2>
+<ul>
+  <li>All rate and cost numbers are assumptions, so the prices are illustrative, not quotable.</li>
+  <li>The AI reader is untested against the live API (section 6). The rule-based reader handles tidy emails and sheets; messy, free-text emails need the AI reader or manual entry.</li>
+  <li>Sending a quote sends nothing. The login limiter resets on server restart.</li>
+  <li>Phone layout is usable but the product is designed for desktop, as the brief says.</li>
+</ul>
+
+</body>
+</html>

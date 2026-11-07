@@ -67,7 +67,8 @@ async function guard(fn: () => Promise<ActionState | void>): Promise<ActionState
 const attempts = new Map<string, { n: number; first: number }>();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 8;
-const DUMMY_HASH = "$2a$10$CwTycUXWue0Thq9StjUM0uJ8.nG8Xk6c5Zb6n2cX3p3pQ6mH3x7W2";
+// A real hash, so a missing account costs the same bcrypt work as a wrong password.
+const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", 10);
 
 export async function loginAction(_: ActionState, form: FormData): Promise<ActionState> {
   const parsed = z
