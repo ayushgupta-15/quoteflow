@@ -312,7 +312,7 @@ export function CostingEditor({
                     <select aria-label={`Operation ${i + 1} work centre`} disabled={dis} value={o.workCentreCode} onChange={(e) => editOp(o.key, { workCentreCode: e.target.value })} className={routingPending ? "pending" : ""}>
                       {workCentres.map((w) => (
                         <option key={w.code} value={w.code}>
-                          {w.code} · ₹{num(w.rate)}/h
+                          {w.code}  ₹{num(w.rate)}/h
                         </option>
                       ))}
                     </select>

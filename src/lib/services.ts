@@ -155,7 +155,16 @@ export function inputsForPart(part: Part, pricingDate: string): CostInputs {
 export function costState(part: Part, costing: Costing | undefined): CostState {
   if (!costing) return "none";
   const now = inputsForPart(part, costing.pricing_date);
-  return JSON.stringify(now) === JSON.stringify(costing.inputs) ? "current" : "stale";
+  return canonical(now) === canonical(costing.inputs) ? "current" : "stale";
+}
+
+/** JSON with sorted keys. Postgres jsonb reorders keys, so plain JSON.stringify cannot be compared. */
+export function canonical(value: unknown): string {
+  return JSON.stringify(value, (_k, v) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
 }
 
 // ---------- RFQs ----------

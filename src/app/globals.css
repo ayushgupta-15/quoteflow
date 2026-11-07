@@ -173,7 +173,7 @@ input.pending { border-color: #c5a553; background: #fffcf3; }
 .sticky { position: sticky; top: 16px; }
 .cost-table td, .cost-table th { padding: 7px 14px; }
 .cost-table .formula { color: var(--muted); font-size: 12px; }
-.op-row { display: grid; grid-template-columns: 1.3fr 0.8fr 0.8fr 28px; gap: 8px; align-items: end; margin-bottom: 8px; }
+.op-row { display: grid; grid-template-columns: 1.9fr 0.7fr 0.7fr 28px; gap: 8px; align-items: end; margin-bottom: 8px; }
 .op-from { grid-column: 1 / -1; font-size: 12px; color: var(--accent); margin-top: -4px; }
 .src-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px; font-size: 12px; color: var(--muted); }
 

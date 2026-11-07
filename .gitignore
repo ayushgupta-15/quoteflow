@@ -6,3 +6,4 @@ node_modules
 *.log
 tsconfig.tsbuildinfo
 next-env.d.ts
+AGENTS.md
