@@ -223,6 +223,28 @@ describe.skipIf(!reachable)("services (real database)", () => {
     expect(hits[0].score!).toBeGreaterThan(0.9);
   });
 
+  it("imports 1,400 past quotes from a sheet quickly, and reports the rows it cannot read", async () => {
+    const header = ["Quote Ref", "Date", "Customer", "Part", "Material", "Gross Wt kg", "Annual Volume", "Price", "Outcome"];
+    const rows: string[][] = [header];
+    for (let i = 1; i <= 1400; i++)
+      rows.push([`Q-${i}`, "2025-06-01", "Company B", `Part ${i}`, "EN8", String(0.2 + (i % 50) / 100), String(10000 + i), String(50 + (i % 40)), i % 3 ? "won" : "lost"]);
+    rows.push(["Q-bad", "2025-06-01", "Company B", "", "EN8", "1", "1", "1", "won"]); // no part name
+    rows.push(["Q-bad2", "2025-06-01", "Company B", "Broken", "EN8", "abc", "1", "1", "won"]); // bad weight
+    const t0 = Date.now();
+    const res = await svc.importPastQuotes(estimator, rows);
+    expect(Date.now() - t0).toBeLessThan(5000);
+    expect(res.imported).toBe(1400);
+    expect(res.skipped.map((s) => s.row)).toEqual([1402, 1403]);
+    const n = await db.queryOne<{ n: number }>("select count(*) as n from past_parts");
+    expect(n!.n).toBe(1400);
+  });
+
+  it("refuses an import that lacks the essential columns", async () => {
+    const res = await svc.importPastQuotes(estimator, [["Part", "Price"], ["x", "1"]]);
+    expect(res.imported).toBe(0);
+    expect(res.missingColumns).toEqual(expect.arrayContaining(["material_code", "gross_wt_kg", "annual_volume"]));
+  });
+
   it("numbers RFQs in sequence within the month", async () => {
     const a = await svc.createRfq(estimator, { customer: "A", dueOn: "2099-01-01", parts: [smallPart] });
     const b = await svc.createRfq(estimator2, { customer: "B", dueOn: "2099-01-01", parts: [smallPart] });
