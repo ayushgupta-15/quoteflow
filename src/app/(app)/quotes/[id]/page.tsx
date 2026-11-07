@@ -127,7 +127,7 @@ export default async function QuotePage({ params }: { params: Promise<{ id: stri
             <div className="card-head">
               <h2>Decision</h2>
             </div>
-            <div className="card-body stack" style={{ gap: 14 }}>
+            <div className="card-body stack" style={{ gap: 16 }}>
               <dl className="kv">
                 <dt>Annual value</dt>
                 <dd className="num">

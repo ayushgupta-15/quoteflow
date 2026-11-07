@@ -49,7 +49,7 @@ Create the schema and demo data, then run:
 ```bash
 npm run db:reset              # DROPS and recreates the public schema, then seeds
 npm run dev                   # http://localhost:3000
-npm test                      # 45 tests; the 15 service tests use a separate quoteflow_test database
+npm test                      # 48 tests; the 15 service tests use a separate quoteflow_test database
 ```
 
 ## Environment variables (names only)

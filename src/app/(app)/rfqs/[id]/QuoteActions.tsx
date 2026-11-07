@@ -12,7 +12,7 @@ import {
 function Feedback({ r }: { r: ActionState }) {
   if (r.error)
     return (
-      <div className="notice bad" role="alert" style={{ marginTop: 10 }}>
+      <div className="notice bad" role="alert" style={{ marginTop: 12 }}>
         {r.error}
         {r.issues ? (
           <ul>

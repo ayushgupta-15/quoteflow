@@ -61,7 +61,7 @@
   <tr><td>AI: RFQ intake</td><td>Reads a pasted email, an Excel/CSV part list and a pasted drawing title block. Every value carries its source and waits for the estimator's OK.</td></tr>
   <tr><td>Roles</td><td>Estimator and sales head, enforced on the server.</td></tr>
 </table>
-<p>Beyond the slice I added: routing suggestions from the most similar past part, past-quote search and Excel/CSV import (tested at 1,400 rows), quote versions that supersede each other, and an activity log per RFQ.</p>
+<p>Beyond the slice I added: routing suggestions from the most similar past part, a "where the price goes" bar on the costing screen, a rate stamp on every cost line, past-quote search and Excel/CSV import (tested at 1,400 rows), quote versions that supersede each other, and an activity log per RFQ.</p>
 
 <h2>2. Architecture and why</h2>
 <svg viewBox="0 0 680 232" width="100%" role="img" aria-label="Architecture diagram">
@@ -144,7 +144,7 @@
   <li><b>Tooling</b> = tooling cost ÷ (<em>V</em> × tooling years). <b>Packing</b> = per piece input. <b>Freight</b> = gross weight × ₹/kg.</li>
   <li><b>Cost</b> = sum of the above. <b>Price</b> = cost ÷ (1 − margin %). <b>GST</b> = price × GST %, shown separately. <b>Annual value</b> = price × <em>V</em>.</li>
 </ul>
-<p>Volume changes the price through setup and tooling spreading over more or fewer pieces, so three tiers give three prices. Every leaf amount is rounded to 2 decimals and everything above is a sum of rounded leaves, so a printed breakup always adds up exactly. Missing rates raise an error naming the missing code, instead of pricing at zero.</p>
+<p>Volume changes the price through setup and tooling spreading over more or fewer pieces, so three tiers give three prices. Every leaf amount is rounded to 2 decimals and everything above is a sum of rounded leaves, so a printed breakup always adds up exactly. Missing rates raise an error naming the missing code, instead of pricing at zero. Each cost line also records the ids of the rate rows it used, and the screen prints them as a rate stamp (for example <code>rate #9 from 1 Apr 2026</code>), so every figure can be traced to the master.</p>
 <h3>Worked example: rear wheel spindle at 1,80,000 a year (from the app)</h3>
 <table>
   <tr><th>Line</th><th>Working</th><th class="n">₹ per piece</th></tr>
@@ -190,17 +190,17 @@
 <div class="callout warn"><b>Honest status.</b> The AI reader was written and unit-tested against a mocked API (success, failure, junk, and that the key is never in the body). It has not been run against the live API in this build because no key was available. The rule-based reader is the tested default.</div>
 
 <h2>7. UI and design decisions</h2>
-<p>The client asked for minimal design that counts as much as features, and for a dense but calm costing screen. The system is one warm off-white surface, one ink-blue accent, system fonts with tabular numerals, thin rules and no shadows or decoration. Colour is only used for status (amber waiting, green good, red lost) so it always means something. Every screen has a loading skeleton, an empty state and an error state, and the layout stacks on a phone with no page-level horizontal scroll (tables scroll inside their card).</p>
+<p>The client asked for minimal design that counts as much as features, and for a dense but calm costing screen. The direction is a drawing office: paper, ink and exact numbers. The system is one warm off-white surface and one ink-blue accent. Type is IBM Plex Sans, with Plex Mono for figures, formulas, ids and rate stamps. Spacing sits on a 4px grid, weights are 400 and 500, and rules are hairlines with no shadows or decoration. Colour is only used where it means something: amber for waiting, green for good, red for lost, and the accent for the action and for the biggest share of a price. Every screen has a loading skeleton, an empty state and an error state, and the layout stacks on a phone with no page-level horizontal scroll (tables scroll inside their card).</p>
 <figure><img src="img/register.jpg" alt="RFQ register"><figcaption><b>RFQ register.</b> Sorted by what needs attention: open RFQs by due date, closed ones last. "Days left" badges turn amber at 2 days and red when overdue. Annual value is shown in lakh and crore so scale reads at a glance.</figcaption></figure>
 <figure><img src="img/intake.jpg" alt="Intake review"><figcaption><b>Intake review.</b> Everything the reader found sits in editable fields with its source beneath. Amber-tinted fields are waiting for your OK. A net weight the reader had to assume says so.</figcaption></figure>
-<figure><img src="img/costing.jpg" alt="Costing screen"><figcaption><b>Costing screen.</b> Inputs on the left, the price table on the right and sticky, with volume tiers as columns so the effect of volume is visible side by side. Each line's formula sits under it in small type, numbers are right-aligned, and nothing else competes.</figcaption></figure>
+<figure><img src="img/costing.jpg" alt="Costing screen"><figcaption><b>Costing screen.</b> Inputs on the left, the price on the right and sticky. The bar at the top is the one rich moment: where each rupee of the price goes, with the biggest share in the accent and the rest in neutral steps. Below it, volume tiers are columns so the effect of volume is visible side by side. Each line shows its formula and a rate stamp, and figures are right-aligned in mono.</figcaption></figure>
 <div class="pair">
   <figure><img src="img/approval.jpg" alt="Approval"><figcaption><b>Approval.</b> The decision panel is the only action. The annual value and the rule that triggered approval are next to it.</figcaption></figure>
   <figure><img src="img/rates.jpg" alt="Rate masters"><figcaption><b>Rate masters.</b> Current value, since when, and any change coming. History is never overwritten.</figcaption></figure>
 </div>
 
 <h2>8. Testing and security</h2>
-<p><b>45 automated tests</b> (<code>npm test</code>): 16 on the costing engine (hand-worked prices, rounding, tiers, effective dating, validation, the approval boundary), 14 on extraction (number, date and material parsing, email, Excel, title block, and the mocked LLM paths), and 15 on the services against a real Postgres (the approval workflow, locks, acceptance rules, rate rules, similarity ranking, RFQ numbering, and a 1,400-row import). One test is a regression for a bug I found by using the app: a saved costing showed "out of date" because Postgres reorders JSON keys.</p>
+<p><b>48 automated tests</b> (<code>npm test</code>): 19 on the costing engine (hand-worked prices, rounding, tiers, effective dating, validation, the approval boundary, line-to-rate traceability, price composition), 14 on extraction (number, date and material parsing, email, Excel, title block, and the mocked LLM paths), and 15 on the services against a real Postgres (the approval workflow, locks, acceptance rules, rate rules, similarity ranking, RFQ numbering, and a 1,400-row import). One test is a regression for a bug I found by using the app: a saved costing showed "out of date" because Postgres reorders JSON keys.</p>
 <table>
   <tr><th>Area</th><th>What is in place</th></tr>
   <tr><td>Secrets</td><td>None in the repository. <code>.env</code> is ignored, <code>.env.example</code> holds names only. In development the session secret is random per process; in production the app refuses to start without <code>SESSION_SECRET</code>.</td></tr>

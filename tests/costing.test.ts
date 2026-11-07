@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CostingError,
+  composition,
   computeCost,
   defaultTiers,
   needsApproval,
@@ -184,5 +185,36 @@ describe("defaultTiers", () => {
     const t = defaultTiers(120);
     expect(new Set(t).size).toBe(t.length);
     expect(t.every((v) => v >= 100)).toBe(true);
+  });
+});
+
+describe("line traceability and composition", () => {
+  it("records the rate rows behind every priced line", () => {
+    const rates = rateBook();
+    const { base, ratesUsed } = computeCost(spindle, rates);
+    const byKey = Object.fromEntries(base.lines.map((l) => [l.key, l]));
+    const code = (id: number) => ratesUsed.find((r) => r.id === id)!.code;
+    expect(byKey.material.rateIds!.map(code)).toEqual(["EN8", "EN8-SCRAP"]);
+    expect(byKey["op-1"].rateIds!.map(code)).toEqual(["TURN-STD"]);
+    expect(byKey.overhead.rateIds!.map(code)).toEqual(["OVERHEAD_PCT"]);
+    expect(byKey.freight.rateIds!.map(code)).toEqual(["FREIGHT_PER_KG"]);
+    expect(byKey.packing.rateIds).toBeUndefined(); // an input, not a rate
+  });
+
+  it("splits the price into parts that add back up to it", () => {
+    const { base } = computeCost({ ...spindle, toolingCost: 600000 }, rateBook());
+    const parts = composition(base);
+    expect(parts.map((p) => p.key)).toEqual(["material", "machining", "overhead", "tooling", "packing_freight", "margin"]);
+    const total = parts.reduce((s, p) => s + p.amount, 0);
+    expect(Math.round(total * 100)).toBe(Math.round(base.price * 100));
+    expect(parts.reduce((s, p) => s + p.share, 0)).toBeCloseTo(1, 6);
+    expect(parts.find((p) => p.key === "margin")!.amount).toBe(Math.round((base.price - base.cost) * 100) / 100);
+  });
+
+  it("leaves out parts that are zero", () => {
+    const { base } = computeCost({ ...spindle, packingPerUnit: 0, toolingCost: 0 }, rateBook());
+    const keys = composition(base).map((p) => p.key);
+    expect(keys).not.toContain("tooling");
+    expect(keys).toContain("packing_freight"); // freight is still there
   });
 });

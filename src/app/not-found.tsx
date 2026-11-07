@@ -5,7 +5,7 @@ export default function NotFound() {
     <div className="login-wrap">
       <div className="card login-card">
         <h1>Not found</h1>
-        <p className="muted" style={{ margin: "6px 0 16px" }}>
+        <p className="muted" style={{ margin: "8px 0 16px" }}>
           That page does not exist, or you do not have access to it.
         </p>
         <Link className="btn primary" href="/rfqs">

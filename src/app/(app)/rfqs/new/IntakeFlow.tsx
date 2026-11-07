@@ -128,7 +128,7 @@ export function IntakeFlow({
             </span>
           </div>
           {state.error ? (
-            <div className="notice bad" role="alert" style={{ marginTop: 14 }}>
+            <div className="notice bad" role="alert" style={{ marginTop: 16 }}>
               {state.error}
             </div>
           ) : null}
@@ -242,8 +242,8 @@ function Review({
         </div>
 
         {parts.map((p, i) => (
-          <fieldset key={i} className="card" style={{ margin: "0 0 14px", padding: 14 }}>
-            <legend className="small muted" style={{ padding: "0 6px" }}>
+          <fieldset key={i} className="card" style={{ margin: "0 0 16px", padding: 16 }}>
+            <legend className="small muted" style={{ padding: "0 8px" }}>
               Part {i + 1}
             </legend>
             <div className="grid-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
@@ -315,7 +315,7 @@ function Review({
           </fieldset>
         ))}
 
-        <div className="row" style={{ marginTop: 6 }}>
+        <div className="row" style={{ marginTop: 8 }}>
           <button type="button" className="btn" onClick={() => setParts((ps) => [...ps, blankPart()])}>
             Add another part
           </button>
@@ -326,7 +326,7 @@ function Review({
         </div>
         {missing ? <p className="hint">Fill in the customer, due date and every field of every part to continue.</p> : null}
         {result.error ? (
-          <div className="notice bad" role="alert" style={{ marginTop: 14 }}>
+          <div className="notice bad" role="alert" style={{ marginTop: 16 }}>
             {result.error}
             {result.issues ? (
               <ul>

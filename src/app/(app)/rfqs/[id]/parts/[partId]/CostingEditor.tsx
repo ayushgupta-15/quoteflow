@@ -10,9 +10,12 @@ import {
   PARAM,
   rateAt,
   type CostInputs,
+  type CostLine,
+  type RateRef,
   type RateRow,
 } from "@/lib/costing";
-import { dateTimeLabel, inr, inrShort, num } from "@/lib/format";
+import { dateLabel, dateTimeLabel, inr, inrShort, num } from "@/lib/format";
+import { CostBar } from "./CostBar";
 import type { Part, PastPart } from "@/lib/services";
 
 interface OpState {
@@ -34,6 +37,17 @@ interface HistoryRow {
 }
 
 const toNum = (s: string) => (s.trim() === "" ? NaN : Number(s));
+
+/** Which rate rows a cost line was priced with, so every figure can be traced to the master. */
+function Stamp({ line, rates }: { line?: CostLine; rates: RateRef[] }) {
+  const rows = (line?.rateIds ?? []).map((id) => rates.find((r) => r.id === id)).filter((r): r is RateRef => Boolean(r));
+  if (rows.length === 0) return null;
+  return (
+    <span className="stamp" title="The rate rows this line was priced with">
+      {" · "}rate {rows.map((r) => `#${r.id}`).join(" ")} from {dateLabel(rows[0].effective_from)}
+    </span>
+  );
+}
 let opKey = 100;
 
 export function CostingEditor({
@@ -437,7 +451,9 @@ export function CostingEditor({
             <span className="small muted">Rates as of {today}</span>
           </div>
           {ok ? (
-            <div className="scroll">
+            <>
+              <CostBar tier={ok.base} />
+              <div className="scroll">
               <table className="cost-table">
                 <thead>
                   <tr>
@@ -455,7 +471,10 @@ export function CostingEditor({
                     <tr key={l.key}>
                       <td>
                         {l.label}
-                        <div className="formula">{ok.base.lines.find((x) => x.key === l.key)?.formula}</div>
+                        <div className="formula">
+                          {ok.base.lines.find((x) => x.key === l.key)?.formula}
+                          <Stamp line={ok.base.lines.find((x) => x.key === l.key)} rates={ok.ratesUsed} />
+                        </div>
                       </td>
                       {ok.tiers.map((t) => (
                         <td key={t.volume} className="num">
@@ -496,7 +515,8 @@ export function CostingEditor({
                   </tr>
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           ) : (
             <div className="card-body">
               <div className="notice">
@@ -519,7 +539,7 @@ export function CostingEditor({
                   : `That is within ${inrShort(threshold)}, so you can send it without approval.`}
               </p>
               {ok.warnings.map((w) => (
-                <p key={w} className="small" style={{ color: "var(--warn)", marginTop: 6 }}>
+                <p key={w} className="small" style={{ color: "var(--warn)", marginTop: 8 }}>
                   {w}
                 </p>
               ))}

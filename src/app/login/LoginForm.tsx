@@ -16,7 +16,7 @@ export function LoginForm() {
         <input id="password" name="password" type="password" autoComplete="current-password" required />
       </div>
       {state.error ? (
-        <div className="notice bad" role="alert" style={{ marginBottom: 14 }}>
+        <div className="notice bad" role="alert" style={{ marginBottom: 16 }}>
           {state.error}
         </div>
       ) : null}

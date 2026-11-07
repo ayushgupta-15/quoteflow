@@ -28,7 +28,7 @@ Demo users (password `Demo@1234`): `estimator@company-a.test`, `estimator2@compa
 | Script | What it does |
 | --- | --- |
 | `npm run dev` / `build` / `start` | Next.js |
-| `npm test` | 45 tests: costing engine, extraction, and services against a real Postgres |
+| `npm test` | 48 tests: costing engine, extraction, and services against a real Postgres |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run db:reset` | Drop and recreate the schema, then seed |
 | `npm run db:local:start` / `stop` | Private Postgres inside `.pgdata` (needs server binaries, no sudo) |

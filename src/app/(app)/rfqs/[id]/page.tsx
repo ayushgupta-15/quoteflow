@@ -166,7 +166,7 @@ export default async function RfqPage({ params }: { params: Promise<{ id: string
               <h2>Quote</h2>
               {live ? <StatusBadge status={live.status} /> : null}
             </div>
-            <div className="card-body stack" style={{ gap: 14 }}>
+            <div className="card-body stack" style={{ gap: 16 }}>
               <dl className="kv">
                 <dt>Annual value</dt>
                 <dd className="num">
@@ -264,10 +264,12 @@ export default async function RfqPage({ params }: { params: Promise<{ id: string
                   {quotes.map((q: Quote) => (
                     <tr key={q.id}>
                       <td>
-                        <Link href={`/quotes/${q.id}`}>{q.quote_no}</Link>
-                      </td>
-                      <td>
-                        <StatusBadge status={q.status} />
+                        <Link className="mono" style={{ whiteSpace: "nowrap" }} href={`/quotes/${q.id}`}>
+                          {q.quote_no}
+                        </Link>
+                        <div style={{ marginTop: 4 }}>
+                          <StatusBadge status={q.status} />
+                        </div>
                       </td>
                       <td className="num">{inrShort(q.annual_value)}</td>
                     </tr>

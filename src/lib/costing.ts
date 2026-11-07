@@ -58,6 +58,8 @@ export interface CostLine {
   label: string;
   formula: string;
   amount: number;
+  /** Ids of the rate rows this line was priced with, so a line can be traced to its rates. */
+  rateIds?: number[];
 }
 
 export interface TierResult {
@@ -197,6 +199,7 @@ export function computeCost(inputs: CostInputs, rates: RateRow[]): CostResult {
       label: "Material, net of scrap recovery",
       formula: `${fmt(inputs.grossWtKg, 3)} kg × ₹${fmt(materialRate!.value)} − ${fmt(scrapWt, 3)} kg × ₹${fmt(scrapRate)}`,
       amount: material,
+      rateIds: scrapRow ? [materialRate!.id, scrapRow.id] : [materialRate!.id],
     });
 
     let conversion = 0;
@@ -209,6 +212,7 @@ export function computeCost(inputs: CostInputs, rates: RateRow[]): CostResult {
         label: `Op ${op.seq} · ${op.workCentreCode}`,
         formula: `${fmt(op.cycleMin, 2)} min ÷ 60 × ₹${fmt(hr)}/h + setup ${fmt(op.setupMin, 0)} min over lot of ${fmt(lotSize, 0)}`,
         amount,
+        rateIds: [opRates.get(op.workCentreCode)!.id],
       });
     }
     conversion = round2(conversion);
@@ -219,6 +223,7 @@ export function computeCost(inputs: CostInputs, rates: RateRow[]): CostResult {
       label: "Overhead on conversion",
       formula: `₹${fmt(conversion)} × ${fmt(overheadPct!.value, 1)}%`,
       amount: overhead,
+      rateIds: [overheadPct!.id],
     });
 
     const tooling = round2(inputs.toolingCost / (volume * toolingYears!.value));
@@ -228,6 +233,7 @@ export function computeCost(inputs: CostInputs, rates: RateRow[]): CostResult {
         label: "Tooling amortisation",
         formula: `₹${fmt(inputs.toolingCost, 0)} ÷ (${fmt(volume, 0)} pcs × ${fmt(toolingYears!.value, 0)} yr)`,
         amount: tooling,
+        rateIds: [toolingYears!.id],
       });
     }
 
@@ -240,6 +246,7 @@ export function computeCost(inputs: CostInputs, rates: RateRow[]): CostResult {
       label: "Freight",
       formula: `${fmt(inputs.grossWtKg, 3)} kg × ₹${fmt(freightPerKg!.value)}/kg`,
       amount: freight,
+      rateIds: [freightPerKg!.id],
     });
 
     const cost = round2(
@@ -267,6 +274,30 @@ export function computeCost(inputs: CostInputs, rates: RateRow[]): CostResult {
     ratesUsed: [...used.values()].sort((a, b) => a.id - b.id),
     warnings,
   };
+}
+
+export interface CompositionPart {
+  key: "material" | "machining" | "overhead" | "tooling" | "packing_freight" | "margin";
+  label: string;
+  amount: number;
+  share: number; // fraction of the ex-GST price, 0..1
+}
+
+/** Where each rupee of the ex-GST unit price goes. Amounts add up to the price. */
+export function composition(tier: TierResult): CompositionPart[] {
+  const sum = (pred: (l: CostLine) => boolean) =>
+    round2(tier.lines.filter(pred).reduce((s, l) => s + l.amount, 0));
+  const parts: Omit<CompositionPart, "share">[] = [
+    { key: "material", label: "Material", amount: sum((l) => l.key === "material") },
+    { key: "machining", label: "Machining", amount: sum((l) => l.key.startsWith("op-")) },
+    { key: "overhead", label: "Overhead", amount: sum((l) => l.key === "overhead") },
+    { key: "tooling", label: "Tooling", amount: sum((l) => l.key === "tooling") },
+    { key: "packing_freight", label: "Packing and freight", amount: sum((l) => l.key === "packing" || l.key === "freight") },
+    { key: "margin", label: "Margin", amount: round2(tier.price - tier.cost) },
+  ];
+  return parts
+    .filter((p) => p.amount > 0)
+    .map((p) => ({ ...p, share: tier.price > 0 ? p.amount / tier.price : 0 }));
 }
 
 /** Quotes strictly above the threshold need the sales head's approval. */
