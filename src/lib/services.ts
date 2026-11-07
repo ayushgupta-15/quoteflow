@@ -688,6 +688,8 @@ export async function addRate(
   if (r.effectiveFrom < now)
     throw new DomainError("A new rate cannot start in the past; existing quotes keep the rate they used");
   if (!(r.value >= 0)) throw new DomainError("Rate must be zero or more");
+  if (r.kind === "param" && !Object.values(PARAM).includes(r.code as (typeof PARAM)[keyof typeof PARAM]))
+    throw new DomainError("Unknown commercial parameter");
   const exists = await queryOne(
     "select 1 from rate_items where kind=$1 and code=$2 and effective_from=$3",
     [r.kind, r.code, r.effectiveFrom],
