@@ -1,4 +1,9 @@
-import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import { Pool, types, type PoolClient, type QueryResultRow } from "pg";
+
+// numeric -> number, bigint -> number, date -> 'YYYY-MM-DD' string (no timezone surprises)
+types.setTypeParser(1700, (v) => parseFloat(v));
+types.setTypeParser(20, (v) => Number(v));
+types.setTypeParser(1082, (v) => v);
 
 const DEFAULT_URL = "postgres://quoteflow:quoteflow@localhost:54329/quoteflow";
 

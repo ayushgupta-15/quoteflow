@@ -92,7 +92,7 @@ create table if not exists quotes (
   version         integer not null,
   quote_no        text not null unique,
   status          text not null default 'pending_approval'
-                  check (status in ('pending_approval', 'approved', 'rejected', 'sent')),
+                  check (status in ('pending_approval', 'approved', 'rejected', 'sent', 'superseded')),
   annual_value    numeric(16,2) not null,
   needs_approval  boolean not null,
   submitted_by    integer references users(id),
