@@ -781,4 +781,68 @@ export async function distinctMaterials(): Promise<string[]> {
   );
 }
 
+export interface ImportResult {
+  imported: number;
+  skipped: { row: number; reason: string }[];
+  missingColumns: string[];
+}
+
+const PAST_COLS: Record<string, RegExp> = {
+  part_name: /^(part|part name|description|item)\b/i,
+  customer: /^(customer|client)\b/i,
+  material_code: /^(material|grade)\b/i,
+  gross_wt_kg: /\b(gross)\b.*\b(wt|weight)\b|^(gross|weight)\b/i,
+  annual_volume: /\b(annual|volume|qty|quantity)\b/i,
+  quoted_price: /\b(price|rate)\b/i,
+  quoted_on: /\b(date|quoted on)\b/i,
+  outcome: /^(outcome|status|result)\b/i,
+  quote_ref: /\b(quote|ref|rfq)\b.*\b(no|ref|number)?\b/i,
+};
+
+/** Import past quotes from a sheet (first row = headings). Bad rows are skipped and reported. */
+export async function importPastQuotes(userId: number, rows: string[][]): Promise<ImportResult> {
+  const header = (rows[0] ?? []).map((h) => String(h).trim());
+  const col: Record<string, number> = {};
+  for (const [k, re] of Object.entries(PAST_COLS)) col[k] = header.findIndex((h, i) => re.test(h) && !Object.values(col).includes(i));
+  const required = ["part_name", "material_code", "gross_wt_kg", "annual_volume", "quoted_price"];
+  const missingColumns = required.filter((k) => col[k] === -1);
+  if (missingColumns.length) return { imported: 0, skipped: [], missingColumns };
+
+  const out = { part_name: [] as string[], customer: [] as string[], material_code: [] as string[], gross: [] as number[], vol: [] as number[], price: [] as number[], on: [] as string[], outcome: [] as string[], ref: [] as string[] };
+  const skipped: ImportResult["skipped"] = [];
+  const num = (v: string) => parseFloat(String(v ?? "").replace(/[₹,\s]/g, ""));
+  const todayStr = await today();
+  rows.slice(1).forEach((r, i) => {
+    if (r.every((c) => String(c ?? "").trim() === "")) return;
+    const at = (k: string) => (col[k] >= 0 ? String(r[col[k]] ?? "").trim() : "");
+    const gross = num(at("gross_wt_kg"));
+    const vol = Math.round(num(at("annual_volume")));
+    const price = num(at("quoted_price"));
+    if (!at("part_name")) return void skipped.push({ row: i + 2, reason: "no part name" });
+    if (!(gross > 0) || !(vol > 0) || !(price > 0)) return void skipped.push({ row: i + 2, reason: "weight, volume or price is not a positive number" });
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(at("quoted_on")) ? at("quoted_on") : todayStr;
+    const outcome = ["won", "lost", "open"].includes(at("outcome").toLowerCase()) ? at("outcome").toLowerCase() : "open";
+    out.part_name.push(at("part_name"));
+    out.customer.push(at("customer") || "Unknown");
+    out.material_code.push(at("material_code") || "UNKNOWN");
+    out.gross.push(gross);
+    out.vol.push(vol);
+    out.price.push(price);
+    out.on.push(date);
+    out.outcome.push(outcome);
+    out.ref.push(at("quote_ref") || `IMP-${i + 2}`);
+  });
+  if (out.part_name.length > 0) {
+    await tx(async (c) => {
+      await c.query(
+        `insert into past_parts (part_name, customer, material_code, gross_wt_kg, annual_volume, quoted_price, quoted_on, outcome, quote_ref)
+         select * from unnest($1::text[], $2::text[], $3::text[], $4::numeric[], $5::int[], $6::numeric[], $7::date[], $8::text[], $9::text[])`,
+        [out.part_name, out.customer, out.material_code, out.gross, out.vol, out.price, out.on, out.outcome, out.ref],
+      );
+      await log(c, null, userId, "past.imported", { rows: out.part_name.length, skipped: skipped.length });
+    });
+  }
+  return { imported: out.part_name.length, skipped: skipped.slice(0, 10), missingColumns: [] };
+}
+
 export { CostingError };

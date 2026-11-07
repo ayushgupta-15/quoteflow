@@ -16,6 +16,8 @@ import {
 import {
   addPart,
   addRate,
+  importPastQuotes,
+  type ImportResult,
   createRfq,
   decideQuote,
   DomainError,
@@ -107,11 +109,11 @@ export interface ExtractState extends ActionState {
   fileName?: string;
 }
 
-async function readSheet(file: File): Promise<string[][]> {
+async function readSheet(file: File, maxRows = 500): Promise<string[][]> {
   const name = file.name.toLowerCase();
   if (file.size > 2 * 1024 * 1024) throw new DomainError("The file is larger than 2 MB");
   const buf = Buffer.from(await file.arrayBuffer());
-  if (name.endsWith(".csv")) return parseCsv(buf.toString("utf8")).slice(0, 500);
+  if (name.endsWith(".csv")) return parseCsv(buf.toString("utf8")).slice(0, maxRows);
   if (name.endsWith(".xlsx")) {
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf as unknown as ArrayBuffer);
@@ -119,7 +121,7 @@ async function readSheet(file: File): Promise<string[][]> {
     if (!ws) throw new DomainError("The workbook has no sheets");
     const rows: string[][] = [];
     ws.eachRow({ includeEmpty: false }, (row) => {
-      if (rows.length >= 500) return;
+      if (rows.length >= maxRows) return;
       const values = (row.values as unknown[]).slice(1, 31);
       rows.push(
         values.map((v) => {
@@ -341,4 +343,27 @@ export async function addRateAction(_: ActionState, form: FormData): Promise<Act
     revalidatePath("/rates");
     return { ok: "Rate added" };
   });
+}
+
+// ---------- past quotes ----------
+
+export interface ImportState extends ActionState {
+  result?: ImportResult;
+}
+
+export async function importPastAction(_: ImportState, form: FormData): Promise<ImportState> {
+  const user = await requireUser();
+  try {
+    const file = form.get("sheet");
+    if (!(file instanceof File) || file.size === 0) return { error: "Choose an .xlsx or .csv file" };
+    const rows = await readSheet(file, 5000);
+    const result = await importPastQuotes(user.id, rows);
+    revalidatePath("/past");
+    if (result.missingColumns.length)
+      return { error: `Missing columns: ${result.missingColumns.join(", ")}. Needed: Part, Material, Gross Wt, Annual Volume, Price.`, result };
+    return { ok: `Imported ${result.imported} rows`, result };
+  } catch (e) {
+    if (e instanceof DomainError) return { error: e.message };
+    throw e;
+  }
 }
