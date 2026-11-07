@@ -251,9 +251,6 @@ export async function savePartCostingAction(partId: number, payload: string): Pr
   const user = await requireUser();
   return guard(async () => {
     const p = partSchema.extend({ ops: z.array(opSchema).min(1).max(30) }).parse(JSON.parse(payload));
-    const hasSuggested = p.ops.some((o) => o.suggestedFrom);
-    if (hasSuggested && !(p.acceptedKeys ?? []).includes("routing"))
-      throw new DomainError("Accept the suggested routing, or edit it, before saving");
     await savePartAndCosting(user.id, partId, p);
     revalidatePath("/rfqs", "layout");
     return { ok: "Costing saved" };

@@ -356,6 +356,12 @@ export async function updatePart(userId: number, partId: number, p: NewPart): Pr
     for (const k of Object.keys(sources)) {
       sources[k] = { ...sources[k], accepted: sources[k].accepted || (p.acceptedKeys ?? []).includes(k) };
     }
+    const suggested = (p.ops ?? []).find((o) => o.suggestedFrom);
+    if (suggested) {
+      if (!(p.acceptedKeys ?? []).includes("routing"))
+        throw new DomainError("Accept the suggested routing, or edit it, before saving");
+      sources.routing = { source: `suggested from past part ${suggested.suggestedFrom}`, accepted: true };
+    }
     await c.query(
       `update parts set name=$2, material_code=$3, gross_wt_kg=$4, net_wt_kg=$5, annual_volume=$6,
          tooling_cost=$7, packing_per_unit=$8, margin_pct=$9, volumes=$10, sources=$11 where id=$1`,
