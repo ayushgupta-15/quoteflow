@@ -331,6 +331,19 @@ export async function createRfq(
   });
 }
 
+export async function addPart(userId: number, rfqId: number, p: NewPart): Promise<number> {
+  const rfq = await getRfq(rfqId);
+  if (!rfq) throw new DomainError("RFQ not found");
+  if (["pending_approval", "sent", "won", "lost"].includes(rfq.status))
+    throw new DomainError("This RFQ is locked: its quote is awaiting approval or already sent");
+  return tx(async (c) => {
+    const n = await c.query("select coalesce(max(line_no),0)+1 as n from parts where rfq_id = $1", [rfqId]);
+    const partId = await insertPart(c, rfqId, n.rows[0].n, p);
+    await log(c, rfqId, userId, "part.added", { partId, name: p.name });
+    return partId;
+  });
+}
+
 export async function updatePart(userId: number, partId: number, p: NewPart): Promise<void> {
   await tx(async (c) => {
     const cur = await c.query("select rfq_id, sources from parts where id = $1 for update", [partId]);
