@@ -2,6 +2,16 @@ import bcrypt from "bcryptjs";
 import { Pool } from "pg";
 import { computeCost, defaultTiers, type RateRow } from "../src/lib/costing";
 import {
+  createRfq,
+  decideQuote,
+  recordOutcome,
+  savePartAndCosting,
+  sendQuote,
+  submitQuote,
+  getParts,
+  getQuote,
+} from "../src/lib/services";
+import {
   OPEN_RFQS,
   PAST_CUSTOMERS,
   PAST_FAMILIES,
@@ -175,7 +185,50 @@ async function main() {
     }
   }
 
-  console.log(`seeded: ${Object.keys(userIds).length} users, ${rateRows.length} rates, ${OPEN_RFQS.length} RFQs, ${count} past parts`);
+  // Closed-out history, created through the same service functions the app uses, so the register
+  // shows every status. Imported last because the services read the rows seeded above.
+  const history: {
+    rfqNo: string;
+    customer: string;
+    daysAgo: number;
+    part: { name: string; materialCode: string; grossWtKg: number; netWtKg: number; annualVolume: number; packingPerUnit: number; ops: { workCentreCode: string; cycleMin: number; setupMin: number }[] };
+    end: "won" | "lost" | "sent" | "pending";
+    reason?: string;
+  }[] = [
+    { rfqNo: "RFQ-2610-031", customer: "Company E (Tier-1)", daysAgo: 24, end: "won",
+      part: { name: "Output shaft", materialCode: "EN8", grossWtKg: 0.92, netWtKg: 0.78, annualVolume: 40000, packingPerUnit: 2.2,
+        ops: [{ workCentreCode: "TURN-STD", cycleMin: 3.6, setupMin: 45 }, { workCentreCode: "THREAD-ROLL", cycleMin: 1, setupMin: 30 }, { workCentreCode: "INSPECT", cycleMin: 0.4, setupMin: 0 }] } },
+    { rfqNo: "RFQ-2610-022", customer: "Company F (two-wheelers)", daysAgo: 31, end: "lost", reason: "Price 7% above a competitor's quote",
+      part: { name: "Flanged bush", materialCode: "EN8", grossWtKg: 0.14, netWtKg: 0.11, annualVolume: 25000, packingPerUnit: 0.8,
+        ops: [{ workCentreCode: "TURN-STD", cycleMin: 1.1, setupMin: 20 }, { workCentreCode: "INSPECT", cycleMin: 0.15, setupMin: 0 }] } },
+    { rfqNo: "RFQ-2610-040", customer: "Company C (tractors)", daysAgo: 12, end: "sent",
+      part: { name: "Steering arm", materialCode: "40Cr4-F", grossWtKg: 3.4, netWtKg: 2.9, annualVolume: 18000, packingPerUnit: 6,
+        ops: [{ workCentreCode: "HMC", cycleMin: 9.5, setupMin: 90 }, { workCentreCode: "DRILL-TAP", cycleMin: 1.8, setupMin: 20 }, { workCentreCode: "INSPECT", cycleMin: 0.8, setupMin: 0 }] } },
+    { rfqNo: "RFQ-2611-009", customer: "Company D (drivetrains)", daysAgo: 4, end: "pending",
+      part: { name: "Pinion blank", materialCode: "20MnCr5", grossWtKg: 1.1, netWtKg: 0.86, annualVolume: 45000, packingPerUnit: 2.6,
+        ops: [{ workCentreCode: "TURN-HV", cycleMin: 4.1, setupMin: 40 }, { workCentreCode: "INSPECT", cycleMin: 0.3, setupMin: 0 }] } },
+  ];
+  for (const h of history) {
+    const rfqId = await createRfq(userIds.estimator, {
+      rfqNo: h.rfqNo,
+      customer: h.customer,
+      dueOn: new Date(Date.now() - (h.daysAgo - 9) * 864e5).toISOString().slice(0, 10),
+      receivedOn: new Date(Date.now() - h.daysAgo * 864e5).toISOString().slice(0, 10),
+      parts: [h.part],
+      via: "seed",
+    });
+    const [p] = await getParts(rfqId);
+    await savePartAndCosting(userIds.estimator, p.id, { ...h.part, acceptedKeys: [] });
+    const quoteId = await submitQuote(userIds.estimator, rfqId);
+    if (h.end === "pending") continue;
+    if ((await getQuote(quoteId))!.status === "pending_approval")
+      await decideQuote(userIds.sales_head, quoteId, "approve", "Margin and routing checked");
+    if (h.end === "sent") { await sendQuote(userIds.sales_head, quoteId); continue; }
+    await sendQuote(userIds.sales_head, quoteId);
+    await recordOutcome(userIds.estimator, rfqId, h.end, h.reason ?? "");
+  }
+
+  console.log(`seeded: ${Object.keys(userIds).length} users, ${rateRows.length} rates, ${OPEN_RFQS.length + history.length} RFQs, ${count} past parts`);
   console.log(`demo password for every seeded user: ${DEMO_PASSWORD}`);
   await db.end();
 }

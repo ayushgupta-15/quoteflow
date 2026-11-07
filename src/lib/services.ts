@@ -322,15 +322,24 @@ export async function nextRfqNo(c: PoolClient | null = null): Promise<string> {
 
 export async function createRfq(
   userId: number,
-  input: { customer: string; dueOn: string; sourceText?: string; parts: NewPart[]; via?: string },
+  input: {
+    customer: string;
+    dueOn: string;
+    sourceText?: string;
+    parts: NewPart[];
+    via?: string;
+    /** Only for seeding historical records. */
+    rfqNo?: string;
+    receivedOn?: string;
+  },
 ): Promise<number> {
   if (input.parts.length === 0) throw new DomainError("Add at least one part");
   return tx(async (c) => {
-    const rfqNo = await nextRfqNo(c);
+    const rfqNo = input.rfqNo ?? (await nextRfqNo(c));
     const r = await c.query(
-      `insert into rfqs (rfq_no, customer, due_on, owner_id, source_text)
-       values ($1,$2,$3,$4,$5) returning id`,
-      [rfqNo, input.customer, input.dueOn, userId, input.sourceText ?? null],
+      `insert into rfqs (rfq_no, customer, received_on, due_on, owner_id, source_text)
+       values ($1,$2,coalesce($3::date, current_date),$4,$5,$6) returning id`,
+      [rfqNo, input.customer, input.receivedOn ?? null, input.dueOn, userId, input.sourceText ?? null],
     );
     const rfqId = r.rows[0].id as number;
     let line = 1;
